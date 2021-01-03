@@ -395,6 +395,8 @@ function onConnected(reconnect, uri) {
             msg.jitsiId = ARENA.JitsiAPI.getJitsiId();
             msg.hasAudio = ARENA.JitsiAPI.hasAudio();
             msg.hasVideo = ARENA.JitsiAPI.hasVideo();
+            if (ARENA.JitsiAPI.loudspeaker())
+                msg.loudspeaker = ARENA.JitsiAPI.loudspeaker();
         }
 
         if (msg !== oldMsg) { // suppress duplicates
@@ -1060,7 +1062,7 @@ function _onMessageArrived(message, jsonMessage) {
                     entityEl.audioTrack = audioTrack.track;
 
                     // check if A/V cut off distance has been reached
-                    if (distance > globals.maxAVDist) {
+                    if (distance > globals.maxAVDist && !entityEl.loudspeaker) {
                         if (entityEl.audioTrack) {
                             entityEl.audioTrack.enabled = false;
                         }// pause WebRTC audio stream
@@ -1070,7 +1072,7 @@ function _onMessageArrived(message, jsonMessage) {
                         }// unpause WebRTC audio stream
                     }
 
-                    if (entityEl.audioTrack !== oldAudioTrack) {
+                    if (entityEl.audioTrack !== oldAudioTrack || (theMessage.loudspeaker && !entityEl.loudspeaker)) {
                         // set up and attach positional audio
                         const audioStream = new MediaStream();
                         audioStream.addTrack(entityEl.audioTrack);
@@ -1086,27 +1088,34 @@ function _onMessageArrived(message, jsonMessage) {
                             sceneEl.audioListener = listener;
                         }
 
+                        if (theMessage.loudspeaker && !entityEl.loudspeaker) {
+                            entityEl.loudspeaker = new THREE.Audio(listener);
+                            entityEl.loudspeaker.setMediaStreamSource(audioStream);
+                            entityEl.object3D.add(entityEl.loudspeaker);
+                            if (entityEl.positionalAudio)
+                                entityEl.positionalAudio.setVolume(0);
+                        }
                         // create positional audio, but only if didn't exist before
-                        if (!entityEl.audioSource) {
-                            entityEl.audioSource = new THREE.PositionalAudio(listener);
-                            entityEl.audioSource.setMediaStreamSource(audioStream);
-                            entityEl.object3D.add(entityEl.audioSource);
+                        else if (!entityEl.positionalAudio) {
+                            entityEl.positionalAudio = new THREE.PositionalAudio(listener);
+                            entityEl.positionalAudio.setMediaStreamSource(audioStream);
+                            entityEl.object3D.add(entityEl.positionalAudio);
 
                             // set positional audio scene params
                             if (globals.volume) {
-                                entityEl.audioSource.setVolume(globals.volume);
+                                entityEl.positionalAudio.setVolume(globals.volume);
                             }
                             if (globals.refDist) { // L-R panning
-                                entityEl.audioSource.setRefDistance(globals.refDist);
+                                entityEl.positionalAudio.setRefDistance(globals.refDist);
                             }
                             if (globals.rolloffFact) {
-                                entityEl.audioSource.setRolloffFactor(globals.rolloffFact);
+                                entityEl.positionalAudio.setRolloffFactor(globals.rolloffFact);
                             }
                             if (globals.distModel) {
-                                entityEl.audioSource.setDistanceModel(globals.distModel);
+                                entityEl.positionalAudio.setDistanceModel(globals.distModel);
                             }
                         } else {
-                            entityEl.audioSource.setMediaStreamSource(audioStream);
+                            entityEl.positionalAudio.setMediaStreamSource(audioStream);
                         }
 
                         // sorta fixes chrome echo bug
@@ -1126,8 +1135,14 @@ function _onMessageArrived(message, jsonMessage) {
                         document.body.addEventListener('touchmove', resume, false);
                         document.body.addEventListener('mousemove', resume, false);
                     }
+                    else if (!theMessage.loudspeaker && entityEl.loudspeaker) {
+                        entityEl.object3D.remove(entityEl.loudspeaker);
+                        entityEl.loudspeaker = null;
+                        if (entityEl.positionalAudio)
+                            entityEl.positionalAudio.setVolume(globals.volume);
+                    }
                 } else {
-                    if (entityEl.audioTrack) {
+                    if (entityEl.audioTrack ) {
                         entityEl.audioTrack.enabled = false;
                     } // pause WebRTC audio stream
                 }

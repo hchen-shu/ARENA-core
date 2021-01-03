@@ -50,6 +50,7 @@ const ARENAJitsiAPI = async function(jitsiServer) {
 
     let hasAudio = false;
     let hasVideo = false;
+    let loudspeaker = false;
 
     const SCREENSHARE_PREFIX = '#5cr33n5h4r3'; // unique prefix for screenshare clients
     const screenShareDict = {};
@@ -672,6 +673,18 @@ const ARENAJitsiAPI = async function(jitsiServer) {
 
         hasVideo: function() {
             return hasVideo;
+        },
+
+        loudspeakerOn: function() {
+            loudspeaker = true;
+        },
+
+        loudspeakerOff: function() {
+            loudspeaker = false;
+        },
+
+        loudspeaker: function() {
+            return loudspeaker;
         },
 
         getAudioTrack: function(jitsiId) {
