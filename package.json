@@ -2,7 +2,8 @@
   "name": "arena-core",
   "version": "1.0.0",
   "description": "Core browser client for ARENA",
-  "browser": "index.js",
+  "author": "CONIX Center",
+  "license": "BSD-3-Clause",
   "browserslist": [
     "last 3 firefox versions",
     "last 3 and_chr versions",
@@ -11,6 +12,7 @@
     "last 3 ios_saf versions",
     "last 3 safari versions"
   ],
+  "browser": "dist/arena-core.js",
   "dependencies": {
     "aframe": "^1.2.0",
     "aframe-extras": "git+https://github.com/n5ro/aframe-extras.git#351608a",
@@ -33,17 +35,17 @@
     "eslint-config-google": "^0.14.0",
     "jsdoc": "^3.6.6",
     "jsdoc-to-markdown": "^7.0.1",
-    "parcel-bundler": "^1.12.4"
+    "parcel": "^2.0.0-beta.2"
   },
   "scripts": {
     "collect-static": "cp src/apriltag/apriltag_wasm.* dist/",
     "prewatch": "npm run collect-static",
-    "watch": "parcel watch src/index.js -o arena-core.js",
+    "watch": "parcel watch src/index.js",
     "prebuild": "npm run collect-static",
-    "build": "parcel build src/index.js -o arena-core.js --public-url ./dist",
-    "build-nominify": "parcel build src/index.js -o arena-core.js --public-url ./dist --no-minify",
+    "build": "parcel build src/index.js --public-url ./dist",
+    "build-nominify": "parcel build src/index.js --public-url ./dist --no-optimize",
     "prebuild-main": "npm run collect-static",
-    "build-main": "parcel build src/index.js -o arena-core.js --public-url /dist",
+    "build-main": "parcel build src/index.js --public-url ./dist",
     "predocs": "echo '# A-Frame components (modules) added to support ARENA core functionality\n' > src/components/README.md",
     "docs": "jsdoc2md src/components/*.js >> src/components/README.md"
   },
@@ -51,8 +53,6 @@
     "type": "git",
     "url": "git+https://github.com/conix-center/ARENA-core.git"
   },
-  "author": "CONIX Center",
-  "license": "BSD-3-Clause",
   "bugs": {
     "url": "https://github.com/conix-center/ARENA-core/issues"
   },
