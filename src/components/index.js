@@ -21,6 +21,7 @@ import './gesture-detector.js';
 import './goto-url.js';
 import './hide-in-ar-mode.js';
 import './impulse.js';
+import './landmark.js';
 import './load-scene.js';
 import './material-extras.js';
 import './network-latency.js';
@@ -39,6 +40,8 @@ import 'aframe-thickline-component'; // our version of aframe-meshline-component
 import 'webxr-polyfill'; // fallback for non-webXR browsers
 // import 'aframe-environment-component'; // pretty environments (npm version has a bug; imported from file instead)
 import 'aframe-extras'; // gltf animations, components for controls, model loaders, pathfinding
+import './vendor/animation-mixer.js'; // Override animation mixer
+import './vendor/nav-system.js'; // Override nav system
 
 // import 'aframe-particle-system-component';
 // import 'aframe-spe-particles-component';
@@ -49,4 +52,3 @@ import './vendor/aframe-physics-system.min.js'; // physics system, build with ca
 import './vendor/aframe-multisrc-component.js'; // add separate image/video textures: https://github.com/elbobo/aframe-multisrc-component
 import './vendor/transparent-occlude.js'; // borrowed from aframe-render-order.js: https://github.com/supermedium/superframe#readme
 import './vendor/morphTarget.js'; // target and control a gltf model's morphTargets: https://github.com/elbobo/aframe-gltf-morph-component
-import './vendor/animation-mixer.js'; // Override animation mixer
