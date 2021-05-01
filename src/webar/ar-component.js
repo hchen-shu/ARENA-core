@@ -6,6 +6,47 @@ const HIDDEN_CLASS = 'a-hidden';
 
 const DTAG_ERROR_THRESH = 5e-6;
 
+function getCanvasSize(canvasEl, embedded, maxSize, isVR) {
+    if (!canvasEl.parentElement) { return {height: 0, width: 0}; }
+    if (embedded) {
+        return {
+        height: canvasEl.parentElement.offsetHeight,
+        width: canvasEl.parentElement.offsetWidth
+        };
+    }
+    return getMaxSize(maxSize, isVR);
+}
+
+function getMaxSize(maxSize, isVR) {
+    var aspectRatio;
+    var size;
+    var pixelRatio = window.devicePixelRatio;
+
+    size = {height: document.body.offsetHeight, width: document.body.offsetWidth};
+    if (!maxSize || isVR || (maxSize.width === -1 && maxSize.height === -1)) {
+        return size;
+    }
+
+    if (size.width * pixelRatio < maxSize.width &&
+        size.height * pixelRatio < maxSize.height) {
+        return size;
+    }
+
+    aspectRatio = size.width / size.height;
+
+    if ((size.width * pixelRatio) > maxSize.width && maxSize.width !== -1) {
+        size.width = Math.round(maxSize.width / pixelRatio);
+        size.height = Math.round(maxSize.width / aspectRatio / pixelRatio);
+    }
+
+    if ((size.height * pixelRatio) > maxSize.height && maxSize.height !== -1) {
+        size.height = Math.round(maxSize.height / pixelRatio);
+        size.width = Math.round(maxSize.height * aspectRatio / pixelRatio);
+    }
+
+    return size;
+}
+
 AFRAME.registerComponent('arena-webar', {
     schema: {
         enabled: {type: 'boolean', default: true},
@@ -160,11 +201,20 @@ AFRAME.registerComponent('arena-webar', {
         const data = this.data;
         const el = this.el;
 
+        // resize AR pass through
         this.arSource.resize(window.innerWidth, window.innerHeight);
-        // this.arSource.copyDimensionsTo(el.renderer.domElement);
         if (data.drawTagsEnabled) {
             this.arSource.copyDimensionsTo(this.overlayCanvas);
         }
+
+        const embedded = el.getAttribute('embedded');
+        const size = getCanvasSize(el.canvas, embedded, el.maxCanvasSize, true);
+        el.camera.aspect = size.width / size.height;
+        el.camera.updateProjectionMatrix();
+
+        // Notify renderer of size change.
+        el.renderer.setSize(size.width, size.height, false);
+        el.emit('rendererresize', null, false);
     },
 
     processCV: async function() {
@@ -231,7 +281,7 @@ AFRAME.registerComponent('arena-webar', {
         this.dtagMatrix.set( // Transposed rotation
             r[0][0], r[1][0], r[2][0], t[0],
             r[0][1], r[1][1], r[2][1], t[1],
-            r[0][2], r[1][2], r[2][2], t[2],
+            r[0][2], r[1][2], r[2][2], 0.45*t[2],
             0, 0, 0, 1,
         );
         this.dtagMatrix.premultiply(this.FLIPMATRIX);
