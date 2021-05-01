@@ -10,10 +10,10 @@ AFRAME.registerComponent('arena-webar', {
     schema: {
         enabled: {type: 'boolean', default: true},
         drawTagsEnabled: {type: 'boolean', default: true},
-        cvRateMs: {type: 'number', default: 100},
+        cvRateMs: {type: 'number', default: 0},
         quadSigma: {type: 'number', default: 0.2},
-        imageWidth: {type: 'number', default: 1280},
-        imageHeight: {type: 'number', default: 720},
+        imgWidth: {type: 'number', default: 1280},
+        imgHeight: {type: 'number', default: 720},
         cx: {type: 'number', default: 636.9118},
         cy: {type: 'number', default: 360.5100},
         fx: {type: 'number', default: 997.2827},
@@ -74,10 +74,7 @@ AFRAME.registerComponent('arena-webar', {
 
         document.body.appendChild(source);
 
-        this.sourceWidth = this.arSource.options.width;
-        this.sourceHeight = this.arSource.options.height;
-
-        // hide enviornment and make scene transparent
+        // hide environment and make scene transparent
         const env = document.getElementById('env');
         env.setAttribute('visible', false);
         el.setAttribute('background', 'transparent', true);
@@ -92,6 +89,8 @@ AFRAME.registerComponent('arena-webar', {
         chatIcons.style.display = 'none';
 
         const camera = document.getElementById('my-camera');
+        // disable press and move controls
+        camera.setAttribute('press-and-move', 'enabled', false);
         // disable aframe's usage of gyro
         camera.setAttribute('look-controls', 'magicWindowTrackingEnabled', false);
         // remove dragging to rotate scene
@@ -100,18 +99,18 @@ AFRAME.registerComponent('arena-webar', {
         camera.setAttribute('arena-camera', 'vioEnabled', true);
 
         // create preprocessor
-        this.preprocessor = new Preprocessor(data.imageWidth, data.imageHeight);
+        this.preprocessor = new Preprocessor(data.imgWidth, data.imgHeight);
         this.preprocessor.setKernelSigma(data.quadSigma);
         this.preprocessor.attachElem(source);
 
-        this.grayscale = new Uint8Array(data.imageWidth * data.imageHeight);
+        this.grayscaleImg = new Uint8Array(data.imgWidth * data.imgHeight);
 
         // create overlay canvas to draw detections, if needed
         if (data.drawTagsEnabled) {
             this.overlayCanvas = document.createElement('canvas');
             this.overlayCanvas.id = 'ar-overlay';
-            this.overlayCanvas.width = this.arSource.options.width;
-            this.overlayCanvas.height = this.arSource.options.height;
+            this.overlayCanvas.width = data.imgWidth;
+            this.overlayCanvas.height = data.imgHeight;
             this.overlayCanvas.style.position = 'absolute';
             this.overlayCanvas.style.top = '0px';
             this.overlayCanvas.style.left = '0px';
@@ -120,6 +119,8 @@ AFRAME.registerComponent('arena-webar', {
         }
 
         // setup aframe canvas positioning
+        // el.renderer.domElement.width = data.imgWidth;
+        // el.renderer.domElement.height = data.imgHeight;
         // el.renderer.domElement.style.position = 'absolute';
         // el.renderer.domElement.style.top = '0px';
         // el.renderer.domElement.style.left = '0px';
@@ -181,19 +182,16 @@ AFRAME.registerComponent('arena-webar', {
         // this.vioPos.setFromMatrixPosition(this.vioMatrix);
 
         const imageData = this.preprocessor.getPixels();
-        let j = 0;
         // grab only one channel; already grayscaled!
-        for (let i = 0; i < 4 * data.imageWidth * data.imageHeight; i+=4) {
-            this.grayscale[j] = imageData[i];
-            j++;
+        for (let i = 0, j = 0; i < data.imgWidth * data.imgHeight * 4; i+=4, j++) {
+            this.grayscaleImg[j] = imageData[i];
         }
 
         // detect apriltags
-        const detections = await this.aprilTag.detect(this.grayscale, data.imageWidth, data.imageHeight);
+        const detections = await this.aprilTag.detect(this.grayscaleImg, data.imgWidth, data.imgHeight);
 
         if (detections.length > 0) {
-            for (const detection of detections) {
-                const d = detection;
+            for (const d of detections) {
                 // console.log(d.pose.e);
                 // if (d.pose.e > DTAG_ERROR_THRESH) {
                 //     continue;
