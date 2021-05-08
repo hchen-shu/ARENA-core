@@ -1,51 +1,19 @@
 import {ARSource} from './ar-source.js';
-import {Preprocessor} from './preprocessor';
+import {Preprocessor} from './preprocessor.js';
+import {Base64Binary} from '../apriltag/base64_binary.js';
 import * as Comlink from 'comlink';
 
 const HIDDEN_CLASS = 'a-hidden';
-
+const COMPUTER_VISION_DATA = 'cv_data';
 const DTAG_ERROR_THRESH = 5e-6;
 
-function getCanvasSize(canvasEl, embedded, maxSize, isVR) {
-    if (!canvasEl.parentElement) { return {height: 0, width: 0}; }
-    if (embedded) {
-        return {
-        height: canvasEl.parentElement.offsetHeight,
-        width: canvasEl.parentElement.offsetWidth
-        };
-    }
-    return getMaxSize(maxSize, isVR);
-}
-
-function getMaxSize(maxSize, isVR) {
-    var aspectRatio;
-    var size;
-    var pixelRatio = window.devicePixelRatio;
-
-    size = {height: document.body.offsetHeight, width: document.body.offsetWidth};
-    if (!maxSize || isVR || (maxSize.width === -1 && maxSize.height === -1)) {
-        return size;
-    }
-
-    if (size.width * pixelRatio < maxSize.width &&
-        size.height * pixelRatio < maxSize.height) {
-        return size;
-    }
-
-    aspectRatio = size.width / size.height;
-
-    if ((size.width * pixelRatio) > maxSize.width && maxSize.width !== -1) {
-        size.width = Math.round(maxSize.width / pixelRatio);
-        size.height = Math.round(maxSize.width / aspectRatio / pixelRatio);
-    }
-
-    if ((size.height * pixelRatio) > maxSize.height && maxSize.height !== -1) {
-        size.height = Math.round(maxSize.height / pixelRatio);
-        size.width = Math.round(maxSize.height * aspectRatio / pixelRatio);
-    }
-
-    return size;
-}
+window.processCV = async function(frame) {
+    const cvDataEvent = new CustomEvent(
+        COMPUTER_VISION_DATA,
+        {detail: frame},
+    );
+    window.dispatchEvent(cvDataEvent);
+};
 
 AFRAME.registerComponent('arena-webar', {
     schema: {
@@ -62,6 +30,8 @@ AFRAME.registerComponent('arena-webar', {
     },
 
     init: function() {
+        this.isWebXRViewer = navigator.userAgent.includes('WebXRViewer');
+
         this.dtagMatrix = new THREE.Matrix4();
         this.rigMatrix = new THREE.Matrix4();
         // this.vioMatrixPrev = new THREE.Matrix4();
@@ -101,15 +71,87 @@ AFRAME.registerComponent('arena-webar', {
             0: this.ORIGINTAG,
         };
 
-        this.arSource = new ARSource();
-        this.arSource.init()
-            .then(this.onARInit.bind(this))
-            .catch((err) => {
-                console.warn(err);
-            });
+        this.bufIndex = 0;
+        this.cvThrottle = 0;
+
+        if (this.isWebXRViewer) {
+            this.onWebXRInit();
+        } else {
+            this.arSource = new ARSource();
+            this.arSource.init()
+                .then(this.onExperimentalWebARInit.bind(this))
+                .catch((err) => {
+                    console.warn(err);
+                });
+        }
     },
 
-    onARInit: async function(source) {
+    onWebXRInit: async function() {
+        const env = document.getElementById('env');
+        env.setAttribute('visible', false);
+
+        await this.apriltagInit();
+
+        // set up cursor
+        let cursor = document.getElementById('mouse-cursor');
+        const cursorParent = cursor.parentNode;
+        cursorParent.removeChild(cursor);
+        cursor = document.createElement('a-cursor');
+        cursor.setAttribute('fuse', false);
+        cursor.setAttribute('scale', '0.1 0.1 0.1');
+        cursor.setAttribute('position', '0 0 -0.1');
+        cursor.setAttribute('color', '#555');
+        cursor.setAttribute('max-distance', '10000');
+        cursorParent.appendChild(cursor);
+
+        window.lastMouseTarget = undefined;
+
+        // handle tap events
+        document.addEventListener('mousedown', function(e) {
+            if (window.lastMouseTarget) {
+                const el = document.getElementById(window.lastMouseTarget);
+                const elPos = new THREE.Vector3();
+                el.object3D.getWorldPosition(elPos);
+
+                const intersection = {
+                    x: elPos.x,
+                    y: elPos.y,
+                    z: elPos.z,
+                };
+                el.emit('mousedown', {
+                    'clicker': window.ARENA.camName,
+                    'intersection': {
+                        point: intersection,
+                    },
+                    'cursorEl': true,
+                }, false);
+            }
+        });
+
+        document.addEventListener('mouseup', function(e) {
+            if (window.lastMouseTarget) {
+                const el = document.getElementById(window.lastMouseTarget);
+                const elPos = new THREE.Vector3();
+                el.object3D.getWorldPosition(elPos);
+                const intersection = {
+                    x: elPos.x,
+                    y: elPos.y,
+                    z: elPos.z,
+                };
+                el.emit('mouseup', {
+                    'clicker': window.ARENA.camName,
+                    'intersection': {
+                        point: intersection,
+                    },
+                    'cursorEl': true,
+                }, false);
+            }
+        });
+
+        window.addEventListener(COMPUTER_VISION_DATA, this.webXRViewerProcessCVData.bind(this));
+    },
+
+    onExperimentalWebARInit: async function(source) {
         const data = this.data;
         const el = this.el;
 
@@ -182,9 +224,12 @@ AFRAME.registerComponent('arena-webar', {
         const data = this.data;
         const el = this.el;
 
-        this.aprilTag.set_camera_info(data.fx, data.fy, data.cx, data.cy);
+        this.fx = data.fx; this.fy = data.fy; this.cx = data.cx; this.cy = data.cy;
+        this.aprilTag.set_camera_info(this.fx, this.fy, this.cx, this.cy);
 
-        this.processCV();
+        if (!this.isWebXRViewer) {
+            this.experimentalWebARProcessCVData();
+        }
     },
 
     hideVRButtons: function() {
@@ -206,21 +251,57 @@ AFRAME.registerComponent('arena-webar', {
         if (data.drawTagsEnabled) {
             this.arSource.copyDimensionsTo(this.overlayCanvas);
         }
-
-        const embedded = el.getAttribute('embedded');
-        const size = getCanvasSize(el.canvas, embedded, el.maxCanvasSize, true);
-        el.camera.aspect = size.width / size.height;
-        el.camera.updateProjectionMatrix();
-
-        // Notify renderer of size change.
-        el.renderer.setSize(size.width, size.height, false);
-        el.emit('rendererresize', null, false);
     },
 
-    processCV: async function() {
+    experimentalWebARProcessCVData: async function() {
         const data = this.data;
         const el = this.el;
 
+        const imageData = this.preprocessor.getPixels();
+        // grab only one channel; already grayscaled!
+        for (let i = 0, j = 0; i < data.imgWidth * data.imgHeight * 4; i+=4, j++) {
+            this.grayscaleImg[j] = imageData[i];
+        }
+
+        // detect apriltags
+        const detections = await this.processCVData(this.grayscaleImg, data.imgWidth, data.imgHeight);
+        if (data.drawTagsEnabled) {
+            this.drawTags(detections);
+        }
+
+        setTimeout(this.experimentalWebARProcessCVData.bind(this), data.cvRateMs);
+    },
+
+    webXRViewerProcessCVData: async function(e) {
+        const ARENA = window.ARENA;
+        this.cvThrottle++;
+        if (this.cvThrottle % ARENA.cvRate) {
+            return;
+        }
+
+        const frame = e.detail;
+
+        // set camera intrinsics for pose detection
+        if (frame._camera.cameraIntrinsics[0] != this.fx || frame._camera.cameraIntrinsics[4] != this.fy ||
+            frame._camera.cameraIntrinsics[6] != this.cx || frame._camera.cameraIntrinsics[7] != this.cy) {
+            this.fx = frame._camera.cameraIntrinsics[0];
+            this.fy = frame._camera.cameraIntrinsics[4];
+            this.cx = frame._camera.cameraIntrinsics[6];
+            this.cy = frame._camera.cameraIntrinsics[7];
+            this.aprilTag.set_camera_info(this.fx, this.fy, this.cx, this.cy);
+        }
+
+        const imgWidth = frame._buffers[this.bufIndex].size.width;
+        const imgHeight = frame._buffers[this.bufIndex].size.height;
+
+        const byteArray = Base64Binary.decodeArrayBuffer(frame._buffers[this.bufIndex]._buffer);
+        // cut u and v values; grayscale image is just the y values
+        const grayscaleImg = new Uint8Array(byteArray.slice(0, imgWidth * imgHeight));
+
+        await this.processCVData(grayscaleImg, imgWidth, imgHeight);
+    },
+
+    processCVData: async function(grayscaleImg, imgWidth, imgHeight) {
         // this.vioMatrixPrev.copy(this.vioMatrix);
         const camParentMat = document.getElementById('my-camera').object3D.parent.matrixWorld;
         const camMat = document.getElementById('my-camera').object3D.matrixWorld;
@@ -231,21 +312,14 @@ AFRAME.registerComponent('arena-webar', {
         // this.vioRot.setFromRotationMatrix(this.vioMatrix);
         // this.vioPos.setFromMatrixPosition(this.vioMatrix);
 
-        const imageData = this.preprocessor.getPixels();
-        // grab only one channel; already grayscaled!
-        for (let i = 0, j = 0; i < data.imgWidth * data.imgHeight * 4; i+=4, j++) {
-            this.grayscaleImg[j] = imageData[i];
-        }
-
         // detect apriltags
-        const detections = await this.aprilTag.detect(this.grayscaleImg, data.imgWidth, data.imgHeight);
-
+        const detections = await this.aprilTag.detect(grayscaleImg, imgWidth, imgHeight);
         if (detections.length > 0) {
             for (const d of detections) {
                 // console.log(d.pose.e);
-                // if (d.pose.e > DTAG_ERROR_THRESH) {
-                //     continue;
-                // }
+                if (this.isWebXRViewer && d.pose.e > DTAG_ERROR_THRESH) {
+                    continue;
+                }
 
                 // search for tag with detection id
                 const indexedTag = this.aprilTags[d.id];
@@ -260,18 +334,18 @@ AFRAME.registerComponent('arena-webar', {
                     // update camera
                     document.getElementById('cameraSpinner').object3D.quaternion.setFromRotationMatrix(rigPose);
                     document.getElementById('cameraRig').object3D.position.setFromMatrixPosition(rigPose);
+                    // console.log(
+                    //     document.getElementById('cameraRig').object3D.position.x,
+                    //     document.getElementById('cameraRig').object3D.position.y,
+                    //     document.getElementById('cameraRig').object3D.position.z,
+                    // )
                 }
             }
-
-            if (data.drawTagsEnabled) {
-                this.drawTags(detections);
-            }
-
             const ids = detections.map((tag) => tag.id);
             console.log('April Tag IDs Detected: ' + ids.join(', '));
         }
 
-        setTimeout(this.processCV.bind(this), data.cvRateMs);
+        return detections;
     },
 
     getRigPoseFromAprilTag: function(dtagPose, refTagPose) {
@@ -281,7 +355,7 @@ AFRAME.registerComponent('arena-webar', {
         this.dtagMatrix.set( // Transposed rotation
             r[0][0], r[1][0], r[2][0], t[0],
             r[0][1], r[1][1], r[2][1], t[1],
-            r[0][2], r[1][2], r[2][2], 0.45*t[2],
+            r[0][2], r[1][2], r[2][2], t[2],
             0, 0, 0, 1,
         );
         this.dtagMatrix.premultiply(this.FLIPMATRIX);
