@@ -1,6 +1,6 @@
 {
     "definitions":{
-       "coord3d":{
+       "Vector3":{
           "type":"object",
           "required":[
              "x",
@@ -111,7 +111,7 @@
                 "description":"Size of the shadow, if applied"
              },
              "lightPosition":{
-                "$ref":"#/definitions/coord3d",
+                "$ref":"#/definitions/Vector3",
                 "title":"Light Position",
                 "description":"Position of the main light. If skyType is atmospheric, only the orientation matters (is a directional light) and it can turn the scene into night when lowered towards the horizon.",
                 "default":{
@@ -157,7 +157,7 @@
                 ]
              },
              "groundScale":{
-                "$ref":"#/definitions/coord3d",
+                "$ref":"#/definitions/Vector3",
                 "default":{
                    "x":1,
                    "y":1,
@@ -244,7 +244,7 @@
                 "description":"Height (in meters) of dressing objects."
              },
              "dressingVariance":{
-                "$ref":"#/definitions/coord3d",
+                "$ref":"#/definitions/Vector3",
                 "default":{
                    "x":1,
                    "y":1,
@@ -330,18 +330,6 @@
                 "title":"Scene Privacy",
                 "description":"false = scene will be visible; true = scene will not show in listings",
                 "default":"false"
-             },
-             "userTeleportDistance":{
-                "type":"number",
-                "title":"User Teleport Distance",
-                "description":"Distance to put user when teleporting to be in front of another user",
-                "default":2
-             },
-             "landmarkTeleportDistance":{
-                "type":"number",
-                "title":"Landmark Teleport Distance",
-                "description":"Distance to put user when teleporting to be in front of a landmark",
-                "default":3.5
              },
              "volume":{
                 "type":"number",

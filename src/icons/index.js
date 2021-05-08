@@ -6,6 +6,25 @@ import './style.css';
 
 const ICON_BTN_CLASS = 'arena-icon-button';
 
+// fullscreen exit handlers
+if (document.addEventListener) {
+    document.addEventListener('fullscreenchange', fullScreenExitHandler, false);
+    document.addEventListener('mozfullscreenchange', fullScreenExitHandler, false);
+    document.addEventListener('MSFullscreenChange', fullScreenExitHandler, false);
+    document.addEventListener('webkitfullscreenchange', fullScreenExitHandler, false);
+}
+
+/**
+ * Handle exit from full screen scenarios
+ */
+function fullScreenExitHandler() {
+    if (document.webkitIsFullScreen || document.mozFullScreen || document.msFullscreenElement !== null) {
+        // manually disable a-frame stats
+        const sceneEl = document.querySelector('a-scene');
+        sceneEl.removeAttribute('stats');
+    }
+}
+
 /**
  * Creates a button that will be displayed as an icon on the left of the screen
  * @param {string} initialImage name of initial image to be displayed
@@ -46,7 +65,6 @@ function createIconButton(initialImage, tooltip, onClick) {
  * SideMenu class
  */
 export class SideMenu {
-
     // we will save a list of the buttons other modules can request to be clicked
     static _buttonList = [];
 
@@ -58,7 +76,7 @@ export class SideMenu {
         SPEED: 'speed',
         FLYING: 'fly',
         SCREENSHARE: 'screenshare',
-        LOGOUT: 'logout'
+        LOGOUT: 'logout',
     };
 
     /**
@@ -68,6 +86,7 @@ export class SideMenu {
         /**
          * Create audio button
          */
+        const myCam = document.getElementById('my-camera');
         const audioBtn = createIconButton('audio-off', 'Microphone on/off.', () => {
             if (!ARENA.Jitsi) return;
             if (!ARENA.Jitsi.hasAudio) { // toggled
@@ -153,22 +172,25 @@ export class SideMenu {
          * Create speed button
          */
         let speedState = 0;
+        const speedMod = Number(ARENA.sceneOptions?.speedModifier) || 1;
+        if (speedMod) { // Set new initial speed if applicable
+            myCam.setAttribute('wasd-controls', {'acceleration': 30 * speedMod});
+            myCam.setAttribute('press-and-move', {'acceleration': 30 * speedMod});
+        }
         const speedBtn = createIconButton('speed-medium', 'Change your movement speed.', () => {
             speedState = (speedState + 1) % 3;
-            if (speedState == 0) { // medium
+            if (speedState === 0) { // medium
                 speedBtn.childNodes[0].style.backgroundImage = 'url(\'/src/icons/images/speed-medium.png\')';
-                document.getElementById('my-camera').setAttribute('wasd-controls', {'acceleration': 30});
-                document.getElementById('my-camera').setAttribute('press-and-move', {'acceleration': 30});
-
-            } else if (speedState == 1) { // fast
+                myCam.setAttribute('wasd-controls', {'acceleration': 30 * speedMod});
+                myCam.setAttribute('press-and-move', {'acceleration': 30 * speedMod});
+            } else if (speedState === 1) { // fast
                 speedBtn.childNodes[0].style.backgroundImage = 'url(\'/src/icons/images/speed-fast.png\')';
-                document.getElementById('my-camera').setAttribute('wasd-controls', {'acceleration': 60});
-                document.getElementById('my-camera').setAttribute('press-and-move', {'acceleration': 60});
-
-            } else if (speedState == 2) { // slow
+                myCam.setAttribute('wasd-controls', {'acceleration': 60 * speedMod});
+                myCam.setAttribute('press-and-move', {'acceleration': 60 * speedMod});
+            } else if (speedState === 2) { // slow
                 speedBtn.childNodes[0].style.backgroundImage = 'url(\'/src/icons/images/speed-slow.png\')';
-                document.getElementById('my-camera').setAttribute('wasd-controls', {'acceleration': 15});
-                document.getElementById('my-camera').setAttribute('press-and-move', {'acceleration': 15});
+                myCam.setAttribute('wasd-controls', {'acceleration': 15 * speedMod});
+                myCam.setAttribute('press-and-move', {'acceleration': 15 * speedMod});
             }
         });
         speedBtn.style.display = 'none';
@@ -184,13 +206,13 @@ export class SideMenu {
             if (flying) { // toggled on
                 flyingBtn.childNodes[0].style.backgroundImage = 'url(\'/src/icons/images/flying-on.png\')';
             } else { // toggled off
-                const myCam = document.getElementById('my-camera');
                 myCam.components['wasd-controls'].resetNav();
+                myCam.components['press-and-move'].resetNav();
                 myCam.object3D.position.y = ARENA.startCoords.y + ARENA.defaults.camHeight;
                 flyingBtn.childNodes[0].style.backgroundImage = 'url(\'/src/icons/images/flying-off.png\')';
             }
-            document.getElementById('my-camera').setAttribute('wasd-controls', {'fly': flying});
-            document.getElementById('my-camera').setAttribute('press-and-move', {'fly': flying});
+            myCam.setAttribute('wasd-controls', {'fly': flying});
+            myCam.setAttribute('press-and-move', {'fly': flying});
         });
         flyingBtn.style.display = 'none';
         settingsButtons.push(flyingBtn);
@@ -234,7 +256,6 @@ export class SideMenu {
                                     objectIds[i] = objectIds[i].trim();
                                 }
                             }
-                            const camera = document.getElementById('my-camera');
                             const screenshareWindow = window.open('./screenshare', '_blank');
                             screenshareWindow.params = {
                                 connectOptions: ARENA.Jitsi.connectOptions,
@@ -242,7 +263,7 @@ export class SideMenu {
                                 token: ARENA.mqttToken,
                                 screenSharePrefix: ARENAJitsi.SCREENSHARE_PREFIX,
                                 conferenceName: ARENA.Jitsi.arenaConferenceName,
-                                displayName: camera ? camera.getAttribute('arena-camera').displayName : 'No Name',
+                                displayName: myCam ? myCam.getAttribute('arena-camera').displayName : 'No Name',
                                 camName: ARENA.camName,
                                 objectIds: objectIds.join(),
                             };
@@ -343,29 +364,29 @@ export class SideMenu {
         credits.className = 'd-block py-1';
         credits.onclick = function() {
             settingsPopup.style.display = 'none'; // close settings panel
-            let attrSystem = document.querySelector("a-scene").systems["attribution"];
+            const attrSystem = document.querySelector('a-scene').systems['attribution'];
             let attrTable = undefined;
             if (attrSystem) {
                 attrTable = attrSystem.getAttributionTable();
             }
-            if (attrTable == undefined) {
+            if (attrTable === undefined) {
                 Swal.fire({
                     title: 'Scene Credits',
-                    text: "Could not find any attributions (did you add an attribution component to models?).",
-                    icon: 'error'
-                  }).then((result) => {
+                    text: 'Could not find any attributions (did you add an attribution component to models?).',
+                    icon: 'error',
+                }).then(() => {
                     settingsPopup.style.display = 'block'; // show settings panel
-                  });
-                  return;
+                });
+                return;
             }
             Swal.fire({
-              title: 'Scene Credits',
-              html: attrTable,
-              width: 800,
-              focusConfirm: false,
-              showCancelButton: false,
-              cancelButtonText: 'Cancel'
-            }).then((result) => {
+                title: 'Scene Credits',
+                html: attrTable,
+                width: 800,
+                focusConfirm: false,
+                showCancelButton: false,
+                cancelButtonText: 'Cancel',
+            }).then(() => {
                 settingsPopup.style.display = 'block'; // show settings panel
             });
         };
@@ -376,8 +397,8 @@ export class SideMenu {
         stats.innerHTML = 'Toggle Stats';
         stats.className = 'd-block pb-1';
         stats.onclick = function() {
-            let sceneEl = document.querySelector('a-scene');
-            let statsEl = sceneEl.getAttribute('stats');
+            const sceneEl = document.querySelector('a-scene');
+            const statsEl = sceneEl.getAttribute('stats');
             sceneEl.setAttribute('stats', !statsEl);
         };
         formDiv.appendChild(stats);
@@ -386,14 +407,14 @@ export class SideMenu {
         profile.href = '#';
         profile.innerHTML = 'Profile';
         profile.onclick = showProfile;
-        profile.className="d-block pb-1";
+        profile.className='d-block pb-1';
         formDiv.appendChild(profile);
 
         const perms = document.createElement('a');
         perms.href = '#';
         perms.innerHTML = 'MQTT Permissions';
         perms.onclick = showPerms;
-        perms.className="d-block pb-1";
+        perms.className='d-block pb-1';
         formDiv.appendChild(perms);
 
         formDiv.append('Scene: ');
@@ -426,7 +447,7 @@ export class SideMenu {
 
         label = document.createElement('label');
         label.className= 'form-label mb-0';
-        label.setAttribute('for', 'settingsUsernameInput')
+        label.setAttribute('for', 'settingsUsernameInput');
         label.innerHTML = 'Display Name';
         usernameInputDiv.appendChild(label);
 
@@ -434,8 +455,8 @@ export class SideMenu {
         const usernameInput = document.createElement('input');
         usernameInput.setAttribute('type', 'text');
         usernameInput.setAttribute('pattern', nameRegex);
-        usernameInput.setAttribute('name', 'settingsUsernameInput')
-        usernameInput.className="form-control";
+        usernameInput.setAttribute('name', 'settingsUsernameInput');
+        usernameInput.className='form-control';
         usernameInputDiv.appendChild(usernameInput);
 
         formDiv.appendChild(usernameInputDiv);
@@ -444,6 +465,10 @@ export class SideMenu {
         saveSettingsBtn.innerHTML = 'Save';
         saveSettingsBtn.className = 'btn btn-info btn-sm';
         formDiv.appendChild(saveSettingsBtn);
+
+        const iconCredits = document.createElement('p');
+        iconCredits.innerHTML = 'Icons made by <a href="https://www.flaticon.com/authors/smashicons" title="Smashicons">Smashicons</a>, <a href="https://www.freepik.com" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a>';
+        formDiv.appendChild(iconCredits);
 
         closeSettingsBtn.onclick = function() {
             settingsPopup.style.display = 'none'; // close settings panel
@@ -477,8 +502,7 @@ export class SideMenu {
                 // remove extra spaces
                 const displayName = usernameInput.value.replace(/\s+/g, ' ').trim();
                 localStorage.setItem('display_name', displayName); // save for next use
-                const camera = document.getElementById('my-camera');
-                camera.setAttribute('arena-camera', 'displayName', displayName); // push to other users' views
+                myCam.setAttribute('arena-camera', 'displayName', displayName); // push to other users' views
                 ARENA.events.emit(ARENAEventEmitter.events.NEW_SETTINGS, {userName: displayName});
             }
         }
@@ -486,7 +510,7 @@ export class SideMenu {
 
     /**
      * Other modules can call this to request a click on a button
-     * @param button {string} the button name. Use SideMenu.buttons constants
+     * @param {string} button the button name. Use SideMenu.buttons constants
      */
     static clickButton(button) {
         this._buttonList[button].onClick();

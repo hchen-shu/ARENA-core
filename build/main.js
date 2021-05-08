@@ -113,7 +113,6 @@ window.addEventListener('onauth', async function (e) {
             startval: startval,
             ajax: true
         });
-        window.jsoneditor = jsoneditor;
 
         // When the value of the editor changes, update the JSON output and validation message
         jsoneditor.on("change", function() {
@@ -165,19 +164,23 @@ window.addEventListener('onauth', async function (e) {
             schema: schema,
             startval: updateobj
         });
-        window.jsoneditor = jsoneditor;
-        jsoneditor.setValue(updateobj);
-        output.value = JSON.stringify(updateobj, null, 2);
-        reload(true);
 
-        window.location.hash = "edit_section";
-
-        Alert.fire({
-            icon: 'info',
-            title: 'Loaded.',
-            html: 'Loaded&nbspinto&nbsp<b>Add/Edit&nbspObject</b>&nbspform. <br/><button class="btn btn-primary btn-mini" type="button" title="Add or Update Object" onClick="addObjHandler()"><i class="icon-plus"></i> Add/Update Object</a> </button> when done.',
-            timer: 10000,
+        await jsoneditor.on('ready',function() {
+            window.jsoneditor = jsoneditor;
+            jsoneditor.setValue(updateobj);
+            output.value = JSON.stringify(updateobj, null, 2);
+            reload(true);
+    
+            window.location.hash = "edit_section";
+    
+            Alert.fire({
+                icon: 'info',
+                title: 'Loaded.',
+                html: 'Loaded&nbspinto&nbsp<b>Add/Edit&nbspObject</b>&nbspform. <br/><button class="btn btn-primary btn-mini" type="button" title="Add or Update Object" onClick="addObjHandler()"><i class="icon-plus"></i> Add/Update Object</a> </button> when done.',
+                timer: 10000,
+            });    
         });
+
     }
 
     // Start the output textarea empty
@@ -190,6 +193,7 @@ window.addEventListener('onauth', async function (e) {
     JSONEditor.defaults.options.iconlib = "fontawesome4";
     JSONEditor.defaults.options.object_layout = "normal";
     JSONEditor.defaults.options.show_errors = "interaction";
+    JSONEditor.defaults.options.ajax = true;
 
     // Open new scene modal
     openAddSceneButton.addEventListener("click", async function() {
@@ -220,8 +224,8 @@ window.addEventListener('onauth', async function (e) {
               const scene = Swal.getPopup().querySelector('#modalscenename').value;
               const addobjs = !!Swal.getPopup().querySelector('#swal2-checkbox').checked;
 
-              if (!scene) {
-                Swal.showValidationMessage(`Please enter a new scene name`)
+              if (!scene.match(/^[a-zA-Z0-9_-]{3,20}$/g)) {
+                Swal.showValidationMessage(`Valid scene names are between 3 and 20 characters long, and only have letters, numbers, '_', or '-'.`)
               }
               return { ns: ns, scene: scene, addobjs: addobjs}
             }
