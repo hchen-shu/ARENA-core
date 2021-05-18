@@ -3,15 +3,15 @@ import './ar-component.js';
 const HIDDEN_CLASS = 'a-hidden';
 
 const handleARButtonForNonWebXRMobile = function() {
+    // if (!AFRAME.utils.device.isMobile()) {
+    //     return;
+    // }
+
     const sceneEl = document.querySelector('a-scene');
     if (!sceneEl) {
         window.addEventListener('DOMContentLoaded', handleARButtonForNonWebXRMobile);
         return;
     }
-
-    // if (!AFRAME.utils.device.isMobile()) {
-    //     return;
-    // }
 
     if (window.hasNativeWebXRImplementation) {
         // handle webxr viewer
