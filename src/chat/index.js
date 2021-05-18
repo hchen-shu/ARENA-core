@@ -15,7 +15,6 @@ import linkifyStr from 'linkifyjs/string';
 import Swal from 'sweetalert2';
 import './style.css';
 import {SideMenu} from '../icons/index.js';
-import he from 'he';
 import MQTTPattern from 'mqtt-pattern';
 
 let mqttc;
@@ -56,6 +55,7 @@ export class ARENAChat {
             mqtt_token: st.mqtt_token !== undefined ? st.mqtt_token : null,
             supportDevFolders: st.supportDevFolders !== undefined ? st.supportDevFolders : false,
             isSceneWriter: this.isUserSceneOwner(st.mqtt_token),
+            isSpeaker: false,
         };
 
         // users list
@@ -180,14 +180,16 @@ export class ARENAChat {
         this.closeUsersBtn.innerText = '×';
         this.usersPopup.appendChild(this.closeUsersBtn);
 
-        const muteAllDiv = document.createElement('div');
-        muteAllDiv.className = 'mute-all';
-        this.usersPopup.appendChild(muteAllDiv);
+        if (this.settings.isSceneWriter) {
+            const muteAllDiv = document.createElement('div');
+            muteAllDiv.className = 'mute-all';
+            this.usersPopup.appendChild(muteAllDiv);
 
-        this.silenceAllBtn = document.createElement('span');
-        this.silenceAllBtn.className = 'users-list-btn ma';
-        this.silenceAllBtn.title = 'Silence (Mute Everyone)';
-        muteAllDiv.appendChild(this.silenceAllBtn);
+            this.silenceAllBtn = document.createElement('span');
+            this.silenceAllBtn.className = 'users-list-btn ma';
+            this.silenceAllBtn.title = 'Silence (Mute Everyone)';
+            muteAllDiv.appendChild(this.silenceAllBtn);
+        }
 
         let label = document.createElement('span');
         label.innerHTML = '<br/>&nbsp';
@@ -293,11 +295,6 @@ export class ARENAChat {
 
         // send sound on/off msg to all
         this.silenceAllBtn.onclick = function() {
-            if (!_this.isUserAuthenticated(_this.settings.cameraid)) {
-                _this.displayAlert('Anonymous users may not mute others.', 3000);
-                return;
-            }
-
             Swal.fire({
                 title: 'Are you sure?',
                 text: 'This will send a mute request to all users.',
@@ -333,6 +330,9 @@ export class ARENAChat {
         ARENA.events.on(ARENAEventEmitter.events.USER_JOINED, this.userJoinCallback);
         ARENA.events.on(ARENAEventEmitter.events.SCREENSHARE, this.screenshareCallback);
         ARENA.events.on(ARENAEventEmitter.events.USER_LEFT, this.userLeftCallback);
+        ARENA.events.on(ARENAEventEmitter.events.DOMINANT_SPEAKER, this.dominantSpeakerCallback);
+        ARENA.events.on(ARENAEventEmitter.events.TALK_WHILE_MUTED, this.talkWhileMutedCallback);
+        ARENA.events.on(ARENAEventEmitter.events.NOISY_MIC, this.noisyMicCallback);
     }
 
     /**
@@ -417,6 +417,47 @@ export class ARENAChat {
         if (this.liveUsers[user.id].type === ARENAChat.userType.ARENA) return; // will be handled through mqtt messaging
         delete this.liveUsers[user.id];
         this.populateUserList();
+    };
+
+    /**
+     * Called when dominant speaker changes.
+     * Defined as a closure to capture 'this'
+     * @param {Object} e event object; e.detail contains the callback arguments
+     */
+    dominantSpeakerCallback = (e) => {
+        const user = e.detail;
+        const roomName = this.settings.scene.toLowerCase().replace(/[!#$&'()*+,\/:;=?@[\]]/g, '_');
+        if (user.scene === roomName) {
+            // if speaker exists, show speaker graph in user list
+            const speaker_id = user.id ? user.id : this.settings.userid; // or self is speaker
+            if (this.liveUsers[speaker_id]) {
+                this.liveUsers[speaker_id].speaker = true;
+            }
+            // if previous speaker exists, show speaker graph in user list
+            if (this.liveUsers[user.pid]) {
+                this.liveUsers[user.pid].speaker = false;
+            }
+            this.settings.isSpeaker = (speaker_id === this.settings.userid);
+            this.populateUserList();
+        }
+    };
+
+    /**
+     * Called when user is talking on mute.
+     * Defined as a closure to capture 'this'
+     * @param {Object} e event object; e.detail contains the callback arguments
+     */
+    talkWhileMutedCallback = (e) => {
+        this.displayAlert(`You are talking on mute.`, 2000);
+    };
+
+    /**
+     * Called when user's microphone is very noisy.
+     * Defined as a closure to capture 'this'
+     * @param {Object} e event object; e.detail contains the callback arguments
+     */
+    noisyMicCallback = (e) => {
+        this.displayAlert(`Your microphone appears to be noisy.`, 2000);
     };
 
     // perform some async startup tasks
@@ -642,18 +683,17 @@ export class ARENAChat {
         const pattern = `${host}\/[a-zA-Z0-9]*\/[a-zA-Z0-9]*(.*)*`; // permissive regex for a scene
         const regex = new RegExp(pattern);
 
-        let emsg = he.encode(msg);
-        if (emsg.match(regex) != null) {
+        if (msg.match(regex) != null) {
             // no new tab if we have a link to an arena scene
-            emsg = emsg.linkify({
+            msg = msg.linkify({
                 target: '_parent',
             });
         } else {
-            emsg = emsg.linkify({
+            msg = msg.linkify({
                 target: '_blank',
             });
         }
-        msgSpan.innerHTML = emsg;
+        msgSpan.innerHTML = msg;
         this.msgList.appendChild(msgSpan);
 
         // scroll to bottom
@@ -680,6 +720,7 @@ export class ARENAChat {
                 un: _this.liveUsers[key].un,
                 cid: _this.liveUsers[key].cid,
                 type: _this.liveUsers[key].type,
+                speaker: _this.liveUsers[key].speaker,
             });
         });
 
@@ -703,6 +744,9 @@ export class ARENAChat {
 
         const uli = document.createElement('li');
         uli.textContent = `${this.settings.username} (Me)`;
+        if (this.settings.isSpeaker) {
+            uli.style.color = 'green';
+        }
         _this.usersList.appendChild(uli);
         const uBtnCtnr = document.createElement('div');
         uBtnCtnr.className = 'users-list-btn-ctnr';
@@ -723,6 +767,9 @@ export class ARENAChat {
         userList.forEach((user) => {
             const uli = document.createElement('li');
             const name = user.type !== ARENAChat.userType.SCREENSHARE ? user.un : `${user.un}\'s Screen Share`;
+            if (user.speaker) {
+                uli.style.color = 'green';
+            }
             uli.textContent = `${((user.scene == _this.settings.scene) ? '' : `${user.scene}/`)}${decodeURI(name)}${(user.type === ARENAChat.userType.EXTERNAL ? ' (external)' : '')}`;
             if (user.type !== ARENAChat.userType.SCREENSHARE) {
                 const uBtnCtnr = document.createElement('div');

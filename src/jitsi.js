@@ -51,6 +51,8 @@ export class ARENAJitsi {
         // TODO: is this how to p2p.enabled false? https://github.com/jitsi/lib-jitsi-meet/blob/master/doc/API.md
         this.confOptions = {
             openBridgeChannel: true,
+            enableTalkWhileMuted: true,
+            enableNoisyMicDetection: true,
             p2p: {enabled: false},
         };
 
@@ -105,11 +107,6 @@ export class ARENAJitsi {
         JitsiMeetJS.init(this.initOptions);
         console.info('Jitsi, connecting:', this.connectOptions);
         this.connection = new JitsiMeetJS.JitsiConnection(ARENAJitsi.ARENA_APP_ID, ARENA.mqttToken, this.connectOptions);
-        this.connection.addEventListener(JitsiMeetJS.events.connection.DOMINANT_SPEAKER_CHANGED, (id) => {
-            // console.log(`(connection) Dominant Speaker ID: ${id}`),
-            this.prevActiveSpeaker = this.activeSpeaker;
-            this.activeSpeaker = id;
-        });
         this.connection.addEventListener(JitsiMeetJS.events.connection.CONNECTION_ESTABLISHED, this.onConnectionSuccess.bind(this));
         this.connection.addEventListener(JitsiMeetJS.events.connection.CONNECTION_FAILED, this.onConnectionFailed.bind(this));
         this.connection.addEventListener(JitsiMeetJS.events.connection.CONNECTION_DISCONNECTED, this.disconnect.bind(this));
@@ -408,6 +405,28 @@ export class ARENAJitsi {
     }
 
     /**
+     * Called when dominant speaker changes.
+     * @param {string} id user Id
+     */
+     onDominantSpeakerChanged(id) {
+        // console.log(`(conference) Dominant Speaker ID: ${id}`);
+        this.prevActiveSpeaker = this.activeSpeaker;
+        this.activeSpeaker = id;
+        let actArenaId;
+        let prevArenaId;
+        const actJitsiId = this.conference.getParticipantById(this.activeSpeaker);
+        if (actJitsiId) actArenaId = actJitsiId.getProperty('arenaId');
+        const prevJitsiId = this.conference.getParticipantById(this.prevActiveSpeaker);
+        if (prevJitsiId) prevArenaId = prevJitsiId.getProperty('arenaId');
+        ARENA.events.emit(ARENAEventEmitter.events.DOMINANT_SPEAKER, {
+            id: actArenaId,
+            pid: prevArenaId,
+            scene: this.arenaConferenceName,
+            src: ARENAEventEmitter.sources.JITSI,
+        });
+    }
+
+    /**
      * This function is called when connection is established successfully
      */
     onConnectionSuccess() {
@@ -420,10 +439,14 @@ export class ARENAJitsi {
         this.conference.on(JitsiMeetJS.events.conference.CONFERENCE_JOINED, this.onConferenceJoined.bind(this));
         this.conference.on(JitsiMeetJS.events.conference.USER_JOINED, this.onUserJoined.bind(this));
         this.conference.on(JitsiMeetJS.events.conference.USER_LEFT, this.onUserLeft.bind(this));
-        this.conference.on(JitsiMeetJS.events.conference.DOMINANT_SPEAKER_CHANGED, (id) => {
-            // console.log(`(conference) Dominant Speaker ID: ${id}`);
-            this.prevActiveSpeaker = this.activeSpeaker;
-            this.activeSpeaker = id;
+        this.conference.on(JitsiMeetJS.events.conference.DOMINANT_SPEAKER_CHANGED, this.onDominantSpeakerChanged.bind(this));
+        this.conference.on(JitsiMeetJS.events.conference.TALK_WHILE_MUTED, () => {
+            console.log(`Talking on mute detected!`);
+            ARENA.events.emit(ARENAEventEmitter.events.TALK_WHILE_MUTED, true);
+        });
+        this.conference.on(JitsiMeetJS.events.conference.NOISY_MIC, () => {
+            console.log(`Non-speech noise detected on microphone.`);
+            ARENA.events.emit(ARENAEventEmitter.events.NOISY_MIC, true);
         });
         this.conference.on(JitsiMeetJS.events.conference.DISPLAY_NAME_CHANGED, (userID, displayName) =>
             console.log(`${userID} - ${displayName}`),
