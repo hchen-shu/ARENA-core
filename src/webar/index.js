@@ -9,6 +9,10 @@ const handleARButtonForNonWebXRMobile = function() {
         return;
     }
 
+    // if (!AFRAME.utils.device.isMobile()) {
+    //     return;
+    // }
+
     if (window.hasNativeWebXRImplementation) {
         // handle webxr viewer
         const isWebXRViewer = navigator.userAgent.includes('WebXRViewer');
