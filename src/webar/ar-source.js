@@ -59,6 +59,23 @@ export class ARSource {
         elem.style.marginTop = this.video.style.marginTop;
     }
 
+    copyElementSizeTo(otherElement) {
+        if (window.innerWidth > window.innerHeight) {
+            //landscape
+            otherElement.style.width = this.video.style.width
+            otherElement.style.height = this.video.style.height
+            otherElement.style.marginLeft = this.video.style.marginLeft
+            otherElement.style.marginTop = this.video.style.marginTop
+        }
+        else {
+            //portrait
+            otherElement.style.height = this.video.style.height
+            otherElement.style.width = (parseInt(otherElement.style.height) * 4 / 3) + "px";
+            otherElement.style.marginLeft = ((window.innerWidth - parseInt(otherElement.style.width)) / 2) + "px";
+            otherElement.style.marginTop = 0;
+        }
+    }
+
     init() {
         return new Promise((resolve, reject) => {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)

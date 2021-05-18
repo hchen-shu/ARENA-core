@@ -1,6 +1,6 @@
 import {ARSource} from './ar-source.js';
 import {Preprocessor} from './preprocessor.js';
-import {Base64Binary} from '../apriltag/base64_binary.js';
+import {Base64Binary} from './apriltag/base64_binary.js';
 import * as Comlink from 'comlink';
 
 const HIDDEN_CLASS = 'a-hidden';
@@ -90,8 +90,6 @@ AFRAME.registerComponent('arena-webar', {
         const env = document.getElementById('env');
         env.setAttribute('visible', false);
 
-        await this.apriltagInit();
-
         // set up cursor
         let cursor = document.getElementById('mouse-cursor');
         const cursorParent = cursor.parentNode;
@@ -148,6 +146,8 @@ AFRAME.registerComponent('arena-webar', {
             }
         });
 
+        await this.apriltagInit();
+
         window.addEventListener(COMPUTER_VISION_DATA, this.webXRViewerProcessCVData.bind(this));
     },
 
@@ -160,7 +160,6 @@ AFRAME.registerComponent('arena-webar', {
         // hide environment and make scene transparent
         const env = document.getElementById('env');
         env.setAttribute('visible', false);
-        el.setAttribute('background', 'transparent', true);
 
         // hide ar/vr buttons
         this.hideVRButtons();
@@ -174,12 +173,10 @@ AFRAME.registerComponent('arena-webar', {
         const camera = document.getElementById('my-camera');
         // disable press and move controls
         camera.setAttribute('press-and-move', 'enabled', false);
-        // disable aframe's usage of gyro
-        camera.setAttribute('look-controls', 'magicWindowTrackingEnabled', false);
         // remove dragging to rotate scene
         camera.setAttribute('look-controls', 'touchEnabled', false);
-        // enable updating vio to MQTT
-        camera.setAttribute('arena-camera', 'vioEnabled', true);
+        // disable aframe's usage of gyro
+        camera.setAttribute('look-controls', 'magicWindowTrackingEnabled', false);
 
         // create preprocessor
         this.preprocessor = new Preprocessor(data.imgWidth, data.imgHeight);
@@ -201,22 +198,30 @@ AFRAME.registerComponent('arena-webar', {
             document.body.appendChild(this.overlayCanvas);
         }
 
-        // setup aframe canvas positioning
-        // el.renderer.domElement.width = data.imgWidth;
-        // el.renderer.domElement.height = data.imgHeight;
-        // el.renderer.domElement.style.position = 'absolute';
-        // el.renderer.domElement.style.top = '0px';
-        // el.renderer.domElement.style.left = '0px';
+        el.addState('ar-mode');
+        el.resize();
+
+        // set up cursor
+        let cursor = document.getElementById('mouse-cursor');
+        const cursorParent = cursor.parentNode;
+        cursorParent.removeChild(cursor);
+        cursor = document.createElement('a-cursor');
+        cursor.setAttribute('fuse', false);
+        cursor.setAttribute('scale', '0.1 0.1 0.1');
+        cursor.setAttribute('position', '0 0 -0.1');
+        cursor.setAttribute('color', '#555');
+        cursor.setAttribute('max-distance', '10000');
+        cursorParent.appendChild(cursor);
 
         this.onResize();
         window.addEventListener('resize', this.onResize.bind(this));
 
-        // download Apriltag wasm module and start processing loop
+        // download Apriltag WASM module and start processing loop
         await this.apriltagInit();
     },
 
     apriltagInit: async function() {
-        const Apriltag = Comlink.wrap(new Worker('../apriltag/apriltag.js'));
+        const Apriltag = Comlink.wrap(new Worker('./apriltag/apriltag.js'));
         this.aprilTag = await new Apriltag(Comlink.proxy(this.onApriltagInit.bind(this)));
     },
 
@@ -249,8 +254,32 @@ AFRAME.registerComponent('arena-webar', {
         // resize AR pass through
         this.arSource.resize(window.innerWidth, window.innerHeight);
         if (data.drawTagsEnabled) {
-            this.arSource.copyDimensionsTo(this.overlayCanvas);
+            this.arSource.copyElementSizeTo(this.overlayCanvas);
         }
+
+        el.camera.fov = 37.5;
+        el.camera.aspect = window.innerWidth / window.innerHeight;
+        el.camera.near = 0.001;
+        el.camera.far = 1000.0;
+        el.camera.updateProjectionMatrix();
+
+        // webxr:
+        // el.camera.projectionMatrix.elements[0] = 1.7113397121429443; // 1.6807010173797607
+        // el.camera.projectionMatrix.elements[1] = 0;
+        // el.camera.projectionMatrix.elements[2] = 0;
+        // el.camera.projectionMatrix.elements[3] = 0;
+        // el.camera.projectionMatrix.elements[4] = 0;
+        // el.camera.projectionMatrix.elements[5] = 3.5782558917999268; // 2.9894068241119385
+        // el.camera.projectionMatrix.elements[6] = 0;
+        // el.camera.projectionMatrix.elements[7] = 0;
+        // el.camera.projectionMatrix.elements[8] = 0;
+        // el.camera.projectionMatrix.elements[9] = 0;
+        // el.camera.projectionMatrix.elements[10] = -1.0000009536743164;
+        // el.camera.projectionMatrix.elements[11] = -1;
+        // el.camera.projectionMatrix.elements[12] = 0;
+        // el.camera.projectionMatrix.elements[13] = 0;
+        // el.camera.projectionMatrix.elements[14] = -0.001000000978820026;
+        // el.camera.projectionMatrix.elements[15] = 0;
     },
 
     experimentalWebARProcessCVData: async function() {
@@ -273,6 +302,9 @@ AFRAME.registerComponent('arena-webar', {
     },
 
     webXRViewerProcessCVData: async function(e) {
+        const data = this.data;
+        const el = this.el;
+
         const ARENA = window.ARENA;
         this.cvThrottle++;
         if (this.cvThrottle % ARENA.cvRate) {
