@@ -23,10 +23,10 @@ AFRAME.registerComponent('arena-webar', {
         quadSigma: {type: 'number', default: 0.2},
         imgWidth: {type: 'number', default: 1280},
         imgHeight: {type: 'number', default: 720},
-        cx: {type: 'number', default: 636.9118},
-        cy: {type: 'number', default: 360.5100},
-        fx: {type: 'number', default: 997.2827},
-        fy: {type: 'number', default: 997.2827},
+        cx: {type: 'number', default: 640},
+        cy: {type: 'number', default: 360},
+        fx: {type: 'number', default: 1280},
+        fy: {type: 'number', default: 1280},
     },
 
     init: function() {
@@ -258,7 +258,7 @@ AFRAME.registerComponent('arena-webar', {
         }
 
         // set new camera projection matrix parameters
-        el.camera.fov = 37.5; // found empirically
+        el.camera.fov = 30; // found empirically
         el.camera.aspect = window.innerWidth / window.innerHeight;
         el.camera.near = 0.001; // webxr viewer parameters
         el.camera.far = 1000.0;
@@ -367,11 +367,6 @@ AFRAME.registerComponent('arena-webar', {
                     // update camera
                     document.getElementById('cameraSpinner').object3D.quaternion.setFromRotationMatrix(rigPose);
                     document.getElementById('cameraRig').object3D.position.setFromMatrixPosition(rigPose);
-                    // console.log(
-                    //     document.getElementById('cameraRig').object3D.position.x,
-                    //     document.getElementById('cameraRig').object3D.position.y,
-                    //     document.getElementById('cameraRig').object3D.position.z,
-                    // )
                 }
             }
             const ids = detections.map((tag) => tag.id);
