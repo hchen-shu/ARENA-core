@@ -258,7 +258,11 @@ AFRAME.registerComponent('arena-webar', {
         }
 
         // set new camera projection matrix parameters
-        el.camera.fov = 30; // found empirically
+        if (window.innerWidth > data.imgWidth || window.innerHeight > data.imgHeight) {
+            el.camera.fov = 31; // found empirically
+        } else {
+            el.camera.fov = 27; // found empirically
+        }
         el.camera.aspect = window.innerWidth / window.innerHeight;
         el.camera.near = 0.001; // webxr viewer parameters
         el.camera.far = 1000.0;
