@@ -15,6 +15,38 @@ window.processCV = async function(frame) {
     window.dispatchEvent(cvDataEvent);
 };
 
+function gluPerspective(fov, aspect, n, f) {
+    const scale = Math.tan(fov * 0.5 * Math.PI / 180) * n
+    const r = aspect * scale
+    const l = -r
+    const t = scale
+    const b = -t
+
+    return {b:b, t:t, l:l, r:r}
+}
+
+function glFrustum(b, t, l, r, n, f, M) {
+    M[0] = 2 * n / (r - l)
+    M[1] = 0
+    M[2] = 0
+    M[3] = 0
+
+    M[4] = 0
+    M[5] = 2 * n / (t - b)
+    M[6] = 0
+    M[7] = 0
+
+    M[8] = (r + l) / (r - l)
+    M[9] = (t + b) / (t - b)
+    M[10] = -(f + n) / (f - n)
+    M[11] = -1
+
+    M[12] = 0
+    M[13] = 0
+    M[14] = -2 * f * n / (f - n)
+    M[15] = 0
+}
+
 AFRAME.registerComponent('arena-webar', {
     schema: {
         enabled: {type: 'boolean', default: true},
