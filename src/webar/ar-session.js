@@ -80,6 +80,8 @@ AFRAME.registerComponent('arena-webar-session', {
         this.bufIndex = 0;
         this.cvThrottle = 0;
 
+        this.updateAprilTags();
+
         if (this.isWebXRViewer) {
             this.onWebXRInit();
         } else {
@@ -121,6 +123,64 @@ AFRAME.registerComponent('arena-webar-session', {
             return false;
         }
         return true;
+    },
+
+    updateAprilTags: async function() {
+        if (ARENA.clientCoords === undefined) {
+            console.error('No device location! Cannot query ATLAS.');
+            return false;
+        }
+
+        const position = ARENA.clientCoords;
+        // limit to 3s update interval
+        if (new Date() - ARENA.lastAprilTagUpdate < 3 * 1000) {
+            return false;
+        }
+
+        const _this = this;
+        fetch(ARENA.ATLASurl +
+            '/lookup/geo?objectType=apriltag&distance=20&units=km&lat=' +
+            position.latitude + '&long=' + position.longitude)
+            .then((response) => {
+                window.ARENA.lastAprilTagUpdate = new Date();
+                return response.json();
+            })
+            .then((data) => {
+                data.forEach((tag) => {
+                    const tagid = tag.name.substring(9);
+                    if (tagid !== 0) {
+                        if (tag.pose && Array.isArray(tag.pose)) {
+                            const tagMatrix = new THREE.Matrix4();
+                            tagMatrix.fromArray(tag.pose.flat()); // comes in row-major, loads col-major
+                            tagMatrix.transpose(); // flip properly to row-major
+                            _this.aprilTags[tagid] = {
+                                id: tagid,
+                                uuid: tag.id,
+                                pose: tagMatrix,
+                            };
+                        }
+                    }
+                });
+            })
+            .finally(() => {
+                // Merge in apriltag system
+            });
+        return true;
+    },
+
+    findAprilTagWithId: function(id) {
+        const tagSystem = document.querySelector('a-scene').systems['apriltag'];
+        if (tagSystem !== undefined) {
+            const sysTag = tagSystem.get(id);
+            if (sysTag !== undefined) {
+                return {
+                    id: sysTag.data.tagid,
+                    uuid: `apriltag_${sysTag.el.id}`,
+                    pose: sysTag.el.object3D.matrixWorld,
+                };
+            }
+        }
+        return this.aprilTags[id];
     },
 
     onWebXRInit: async function() {
@@ -410,7 +470,8 @@ AFRAME.registerComponent('arena-webar-session', {
                 }
 
                 // search for tag with detection id
-                const indexedTag = this.aprilTags[d.id];
+                // known tag from ATLAS (includes Origin tag)
+                const indexedTag = this.findAprilTagWithId(d.id);
 
                 // if tag has pose, update camera position based on pose
                 if (indexedTag?.pose) {
