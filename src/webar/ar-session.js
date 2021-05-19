@@ -5,7 +5,10 @@ import * as Comlink from 'comlink';
 
 const HIDDEN_CLASS = 'a-hidden';
 const COMPUTER_VISION_DATA = 'cv_data';
+
 const DTAG_ERROR_THRESH = 5e-6;
+const MOVE_THRESH = 0.05;
+const ROT_THRESH = 0.087;
 
 window.processCV = async function(frame) {
     const cvDataEvent = new CustomEvent(
@@ -15,11 +18,10 @@ window.processCV = async function(frame) {
     window.dispatchEvent(cvDataEvent);
 };
 
-AFRAME.registerComponent('arena-webar', {
+AFRAME.registerComponent('arena-webar-session', {
     schema: {
         enabled: {type: 'boolean', default: true},
         drawTagsEnabled: {type: 'boolean', default: true},
-        cvRateMs: {type: 'number', default: 0},
         quadSigma: {type: 'number', default: 0.2},
         imgWidth: {type: 'number', default: 1280},
         imgHeight: {type: 'number', default: 720},
@@ -34,16 +36,20 @@ AFRAME.registerComponent('arena-webar', {
 
         this.dtagMatrix = new THREE.Matrix4();
         this.rigMatrix = new THREE.Matrix4();
-        // this.vioMatrixPrev = new THREE.Matrix4();
+
+        this.vioMatrixPrev = new THREE.Matrix4();
         this.vioMatrix = new THREE.Matrix4();
         this.vioMatrixInv = new THREE.Matrix4();
-        // this.vioMatrixDiff = new THREE.Matrix4();
+        this.vioMatrixDiff = new THREE.Matrix4();
+        this.vioPosDiff = new THREE.Vector3();
+
         this.tagPoseMatrix = new THREE.Matrix4();
         // this.identityMatrix = new THREE.Matrix4();
         // this.vioRot = new THREE.Quaternion();
         // this.vioPos = new THREE.Vector3();
-        // this.vioPosDiff = new THREE.Vector3();
         // this.tagPoseRot = new THREE.Quaternion();
+
+        this.cvPerfTrack = Array(10).fill(16.66, 0, 10);
 
         this.FLIPMATRIX = new THREE.Matrix4();
         this.FLIPMATRIX.set(
@@ -86,6 +92,37 @@ AFRAME.registerComponent('arena-webar', {
         }
     },
 
+    updateAvgCVRate: function(lastInterval) {
+        this.cvPerfTrack.shift();
+        this.cvPerfTrack.push(lastInterval);
+        const avg = this.cvPerfTrack.reduce((a, c) => a + c) / this.cvPerfTrack.length;
+        window.ARENA.cvRate = Math.ceil(60 / Math.max(1, Math.min(60, 1000 / avg)));
+    },
+
+    vioFilter: function(vioPrev, vioCur) {
+        // posediff = pose2 @ np.linalg.inv(pose1)
+        this.vioMatrixDiff.multiplyMatrices(vioPrev, vioCur);
+
+        // np.linalg.norm(posediff[0:3, 3])
+        const moveDiff = this.vioPosDiff.setFromMatrixPosition(
+            this.vioMatrixDiff).length();
+        if (moveDiff > MOVE_THRESH) {
+            // console.log('Move Threshold Exceeded: ' + moveDiff);
+            return false;
+        }
+
+        // math.acos((np.trace(posediff[0:3, 0:3]) - 1) / 2)
+        const rotDiff = Math.acos(
+            (this.vioMatrixDiff.elements[0] +
+             this.vioMatrixDiff.elements[5] +
+             this.vioMatrixDiff.elements[10] - 1) / 2);
+        if (rotDiff > ROT_THRESH) {
+            // console.log('Move Threshold Exceeded: ' + moveDiff);
+            return false;
+        }
+        return true;
+    },
+
     onWebXRInit: async function() {
         const env = document.getElementById('env');
         env.setAttribute('visible', false);
@@ -121,8 +158,8 @@ AFRAME.registerComponent('arena-webar', {
         camera.setAttribute('press-and-move', 'enabled', false);
         // remove dragging to rotate scene
         camera.setAttribute('look-controls', 'touchEnabled', false);
-        // disable aframe's usage of gyro
-        camera.setAttribute('look-controls', 'magicWindowTrackingEnabled', false);
+        // enable aframe's usage of gyro
+        camera.setAttribute('look-controls', 'magicWindowTrackingEnabled', true);
 
         // create preprocessor
         this.preprocessor = new Preprocessor(data.imgWidth, data.imgHeight);
@@ -291,6 +328,12 @@ AFRAME.registerComponent('arena-webar', {
         const data = this.data;
         const el = this.el;
 
+        // const ARENA = window.ARENA;
+        // this.cvThrottle++;
+        // if (this.cvThrottle % ARENA.cvRate) {
+        //     requestAnimationFrame(this.experimentalWebARProcessCVData.bind(this));
+        // }
+
         const imageData = this.preprocessor.getPixels();
         // grab only one channel; already grayscaled!
         for (let i = 0, j = 0; i < data.imgWidth * data.imgHeight * 4; i+=4, j++) {
@@ -303,7 +346,7 @@ AFRAME.registerComponent('arena-webar', {
             this.drawTags(detections);
         }
 
-        setTimeout(this.experimentalWebARProcessCVData.bind(this), data.cvRateMs);
+        requestAnimationFrame(this.experimentalWebARProcessCVData.bind(this));
     },
 
     webXRViewerProcessCVData: async function(e) {
@@ -315,9 +358,9 @@ AFRAME.registerComponent('arena-webar', {
         if (this.cvThrottle % ARENA.cvRate) {
             return;
         }
+        const start = Date.now();
 
         const frame = e.detail;
-
         // set camera intrinsics for pose detection
         if (frame._camera.cameraIntrinsics[0] != this.fx || frame._camera.cameraIntrinsics[4] != this.fy ||
             frame._camera.cameraIntrinsics[6] != this.cx || frame._camera.cameraIntrinsics[7] != this.cy) {
@@ -336,15 +379,23 @@ AFRAME.registerComponent('arena-webar', {
         const grayscaleImg = new Uint8Array(byteArray.slice(0, imgWidth * imgHeight));
 
         await this.processCVData(grayscaleImg, imgWidth, imgHeight);
+
+        this.updateAvgCVRate(Date.now() - start);
     },
 
     processCVData: async function(grayscaleImg, imgWidth, imgHeight) {
-        // this.vioMatrixPrev.copy(this.vioMatrix);
-        const camParentMat = document.getElementById('my-camera').object3D.parent.matrixWorld;
-        const camMat = document.getElementById('my-camera').object3D.matrixWorld;
+        this.vioMatrixPrev.copy(this.vioMatrix);
+
+        const camera = document.getElementById('my-camera');
+        const camParentMat = camera.object3D.parent.matrixWorld;
+        const camMat = camera.object3D.matrixWorld;
+
         this.vioMatrix.copy(camParentMat).invert(); // vioMatrix.getInverse(camParent);
         this.vioMatrix.multiply(camMat);
         this.vioMatrixInv.copy(this.vioMatrix).invert(); // vioMatrixT.getInverse(vioMatrix);
+        if (!this.vioFilter(this.vioMatrixPrev, this.vioMatrixInv)) {
+            return;
+        }
 
         // this.vioRot.setFromRotationMatrix(this.vioMatrix);
         // this.vioPos.setFromMatrixPosition(this.vioMatrix);
@@ -426,7 +477,7 @@ AFRAME.registerComponent('arena-webar', {
     drawTags: function(tags) {
         const data = this.data;
 
-        if (!data.drawTagsEnabled) {
+        if (!tags || !data.drawTagsEnabled) {
             return;
         }
 

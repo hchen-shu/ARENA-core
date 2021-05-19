@@ -1,4 +1,4 @@
-import './ar-component.js';
+import './ar-session.js';
 
 const HIDDEN_CLASS = 'a-hidden';
 
@@ -19,7 +19,7 @@ const handleARButtonForNonWebXRMobile = function() {
         if (isWebXRViewer) {
             window.addEventListener('enter-vr', function(e) {
                 if (sceneEl.is('ar-mode')) {
-                    sceneEl.setAttribute('arena-webar', '');
+                    sceneEl.setAttribute('arena-webar-session', '');
                 }
             });
         }
@@ -32,7 +32,7 @@ const handleARButtonForNonWebXRMobile = function() {
         enterAREl.classList.remove(HIDDEN_CLASS);
         enterAREl.removeEventListener('click', vrModeUI.onEnterARButtonClick, true);
         enterAREl.addEventListener('click', function() {
-            sceneEl.setAttribute('arena-webar', '');
+            sceneEl.setAttribute('arena-webar-session', '');
         });
     } else {
         sceneEl.addEventListener('loaded', handleARButtonForNonWebXRMobile);
