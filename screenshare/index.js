@@ -1,6 +1,14 @@
-/* global $, JitsiMeetJS */ 
+/* global $, JitsiMeetJS */
 
 if (!window.params) window.close();
+
+// create exit button
+const exitButton = document.createElement('button');
+exitButton.id = "exitButton";
+exitButton.className = "leave-button";
+exitButton.title = "End Screen Sharing";
+exitButton.innerHTML = "Exit";
+exitButton.onclick = unload;
 
 const options = window.params.connectOptions;
 const appID = window.params.appID;
@@ -72,6 +80,8 @@ function onConferenceJoined() {
  * That function is called when connection is established successfully
  */
 function onConnectionSuccess() {
+    document.body.appendChild(exitButton);
+
     conference = connection.initJitsiConference(window.params.conferenceName, confOptions);
     conference.on(JitsiMeetJS.events.conference.TRACK_REMOVED, (track) => {
         console.log(`track removed!!!${track}`);
